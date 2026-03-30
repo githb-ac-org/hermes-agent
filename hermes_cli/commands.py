@@ -118,6 +118,8 @@ COMMAND_REGISTRY: list[CommandDef] = [
                "Tools & Skills", cli_only=True),
 
     # Info
+    CommandDef("commands", "Browse all commands and skills (paginated)", "Info",
+               gateway_only=True, args_hint="[page]"),
     CommandDef("help", "Show available commands", "Info"),
     CommandDef("usage", "Show token usage for the current session", "Info"),
     CommandDef("insights", "Show usage insights and analytics", "Info",
@@ -359,6 +361,37 @@ def telegram_bot_commands() -> list[tuple[str, str]]:
         tg_name = cmd.name.replace("-", "_")
         result.append((tg_name, cmd.description))
     return result
+
+
+def telegram_menu_commands(max_commands: int = 100) -> tuple[list[tuple[str, str]], int]:
+    """Return Telegram menu commands (built-in + active skills), capped to the Bot API limit.
+
+    Built-in commands come first, then active skill commands.  Commands beyond
+    ``max_commands`` remain callable in the gateway; they are just omitted from
+    Telegram's native slash-command picker.
+
+    Returns:
+        (menu_commands, hidden_count) where hidden_count is the number of
+        commands omitted due to the cap.
+    """
+    all_commands = list(telegram_bot_commands())
+
+    # Append active skill commands (already filtered for disabled/platform)
+    try:
+        from agent.skill_commands import get_skill_commands
+        skill_cmds = get_skill_commands()
+        for cmd_key in sorted(skill_cmds):
+            name = cmd_key.lstrip("/").replace("-", "_")
+            desc = skill_cmds[cmd_key].get("description", "")
+            # Telegram descriptions max 256 chars
+            if len(desc) > 256:
+                desc = desc[:253] + "..."
+            all_commands.append((name, desc))
+    except Exception:
+        pass
+
+    hidden_count = max(0, len(all_commands) - max_commands)
+    return all_commands[:max_commands], hidden_count
 
 
 def slack_subcommand_map() -> dict[str, str]:
